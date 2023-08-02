@@ -15,7 +15,6 @@ perceptual_measurment.py
 plot_difference.py
 add_gaussian.py
 perceptual_measurement.py
-mist_v3_*.py
 compute_*.py
 outputs/dirs/*/*.jpg
 outputs/dirs/*/*.png
