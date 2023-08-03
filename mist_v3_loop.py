@@ -33,6 +33,30 @@ def image_to_b64(image):
         image_bytes = f.read()
     return base64.b64encode(image_bytes).decode('utf-8')
 
+def image_resize(image, max_width=None, max_height=None):
+    if max_width is not None:
+        width = max_width if image.width > max_width else image.width
+        height = int(image.height * width / image.width)
+        image = image.resize((width, height))
+    if max_height is not None:
+        height = max_height if image.height > max_height else image.height
+        width = int(image.width * height / image.height)
+        image = image.resize((width, height))
+    return image
+
+def image_expand2square(image, background_color):
+    width, height = image.size
+    if width == height:
+        return image
+    elif width > height:
+        result = Image.new(image.mode, (width, width), background_color)
+        result.paste(image, (0, (width - height) // 2))
+        return result
+    else:
+        result = Image.new(image.mode, (height, height), background_color)
+        result.paste(image, ((height - width) // 2, 0))
+        return result
+
 def load_model_from_config(config, ckpt, verbose: bool = False):
     """
     Load model from the config and the ckpt path.
@@ -338,6 +362,14 @@ if __name__ == "__main__":
         while True:
             # Set from mist target directory
             image_path = '*****'
+
+            # Image conversion
+            image = Image.open(image_path)
+            image = image.convert('RGB')
+            image = image_expand2square(image, (255, 255, 255))
+            image = image_resize(image, max_width=512, max_height=512)
+            image.save(image_path)
+
             if resize:
                 img, target_size = closing_resize(image_path, input_size, block_num)
                 bls_h = target_size[0]//block_num
