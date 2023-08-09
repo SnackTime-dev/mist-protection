@@ -363,47 +363,83 @@ if __name__ == "__main__":
             # Set from mist target directory
             image_path = '*****'
 
-            # Image conversion
+            # Convert image to 1024px
             image = Image.open(image_path)
             image = image.convert('RGB')
+            image = image_resize(image, max_width=1024, max_height=1024)
             image = image_expand2square(image, (255, 255, 255))
-            image = image_resize(image, max_width=512, max_height=512)
+            image = image.resize((1024, 1024))
             image.save(image_path)
 
-            if resize:
-                img, target_size = closing_resize(image_path, input_size, block_num)
-                bls_h = target_size[0]//block_num
-                bls_w = target_size[1]//block_num
-                tar_img = load_image_from_path(target_image_path, target_size[0],
-                                               target_size[1])
-            else:
-                img = load_image_from_path(image_path, input_size)
-                tar_img = load_image_from_path(target_image_path, input_size)
-                bls_h = bls_w = bls
-                target_size = [input_size, input_size]
-            output_image = np.zeros([target_size[1], target_size[0], 3])
-            config = init(epsilon=epsilon, steps=steps, mode=mode, rate=rate)
-            config['parameters']["input_size"] = bls
+            # Split into 4 images
+            image_names = [
+                'outputs/images/left_top.png',
+                'outputs/images/right_top.png',
+                'outputs/images/left_bottom.png',
+                'outputs/images/right_bottom.png'
+            ]
+            width, height = image.size
+            left_top = image.crop((0, 0, width // 2, height // 2))
+            right_top = image.crop((width // 2, 0, width, height // 2))
+            left_bottom = image.crop((0, height // 2, width // 2, height))
+            right_bottom = image.crop((width // 2, height // 2, width, height))
+            left_top.save(image_names[0])
+            right_top.save(image_names[1])
+            left_bottom.save(image_names[2])
+            right_bottom.save(image_names[3])
 
-            if mask:
-                mask_path = args.mask_path
-                processed_mask = load_image_from_path(mask_path, target_size[0], target_size[1])
-            else:
-                processed_mask = None
-            for i in tqdm(range(block_num)):
-                for j in tqdm(range(block_num)):
-                    if processed_mask is not None:
-                        input_mask = Image.fromarray(np.array(processed_mask)[bls_w*i: bls_w*i+bls_w, bls_h*j: bls_h*j + bls_h])
-                    else:
-                        input_mask = None
-                    img_block = Image.fromarray(np.array(img)[bls_w*i: bls_w*i+bls_w, bls_h*j: bls_h*j + bls_h])
-                    tar_block = Image.fromarray(np.array(tar_img)[bls_w*i: bls_w*i+bls_w, bls_h*j: bls_h*j + bls_h])
+            # Mist processing on 4 images
+            for idx in range(4):
+                # Set from mist target directory
+                image_path = image_names[idx]
 
-                    output_image[bls_w*i: bls_w*i+bls_w, bls_h*j: bls_h*j + bls_h] = infer(img_block, config, tar_block, input_mask)
+                if resize:
+                    img, target_size = closing_resize(image_path, input_size, block_num)
+                    bls_h = target_size[0]//block_num
+                    bls_w = target_size[1]//block_num
+                    tar_img = load_image_from_path(target_image_path, target_size[0],
+                                                   target_size[1])
+                else:
+                    img = load_image_from_path(image_path, input_size)
+                    tar_img = load_image_from_path(target_image_path, input_size)
+                    bls_h = bls_w = bls
+                    target_size = [input_size, input_size]
+                output_image = np.zeros([target_size[1], target_size[0], 3])
+                config = init(epsilon=epsilon, steps=steps, mode=mode, rate=rate)
+                config['parameters']["input_size"] = bls
 
-            output = Image.fromarray(output_image.astype(np.uint8))
-            output_name = os.path.join('outputs/images', args.output_name)
-            save_parameter = '_' + str(epsilon) + '_' + str(steps) + '_' + str(input_size) + '_' + str(block_num) + '_' + str(mode) + '_' + str(args.rate) + '_' + str(int(mask)) + '_' + str(int(resize))
-            output_name += save_parameter + '.png'
+                if mask:
+                    mask_path = args.mask_path
+                    processed_mask = load_image_from_path(mask_path, target_size[0], target_size[1])
+                else:
+                    processed_mask = None
+                for i in tqdm(range(block_num)):
+                    for j in tqdm(range(block_num)):
+                        if processed_mask is not None:
+                            input_mask = Image.fromarray(np.array(processed_mask)[bls_w*i: bls_w*i+bls_w, bls_h*j: bls_h*j + bls_h])
+                        else:
+                            input_mask = None
+                        img_block = Image.fromarray(np.array(img)[bls_w*i: bls_w*i+bls_w, bls_h*j: bls_h*j + bls_h])
+                        tar_block = Image.fromarray(np.array(tar_img)[bls_w*i: bls_w*i+bls_w, bls_h*j: bls_h*j + bls_h])
+
+                        output_image[bls_w*i: bls_w*i+bls_w, bls_h*j: bls_h*j + bls_h] = infer(img_block, config, tar_block, input_mask)
+
+                output = Image.fromarray(output_image.astype(np.uint8))
+                output_name = os.path.join('outputs/images', args.output_name)
+                save_parameter = '_' + str(epsilon) + '_' + str(steps) + '_' + str(input_size) + '_' + str(block_num) + '_' + str(mode) + '_' + str(args.rate) + '_' + str(int(mask)) + '_' + str(int(resize))
+                output_name += save_parameter + '.png'
+                output.save(image_names[idx])
+
+            # Merge 4 images
+            left_top = Image.open(image_names[0])
+            right_top = Image.open(image_names[1])
+            left_bottom = Image.open(image_names[2])
+            right_bottom = Image.open(image_names[3])
+            width, height = left_top.size
+            merged_image = Image.new('RGB', (width * 2, height * 2))
+            merged_image.paste(left_top, (0, 0))
+            merged_image.paste(right_top, (width, 0))
+            merged_image.paste(left_bottom, (0, height))
+            merged_image.paste(right_bottom, (width, height))
             print("Output image saved in path {}".format(output_name))
-            output.save(output_name)
+            merged_image.save(output_name)
