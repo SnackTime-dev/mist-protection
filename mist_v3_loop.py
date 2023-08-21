@@ -367,6 +367,7 @@ if __name__ == "__main__":
             image = Image.open(image_path)
             image = image.convert('RGB')
             image = image_resize(image, max_width=1024, max_height=1024)
+            original_image_width, original_image_height = image.size
             image = image_expand2square(image, (255, 255, 255))
             image = image.resize((1024, 1024))
             image.save(image_path)
@@ -441,5 +442,18 @@ if __name__ == "__main__":
             merged_image.paste(right_top, (width, 0))
             merged_image.paste(left_bottom, (0, height))
             merged_image.paste(right_bottom, (width, height))
+
+            # Crop
+            if original_image_width > original_image_height:
+                original_image_height = original_image_height * (1024 / original_image_width)
+                original_image_width = 1024
+                margin = (1024 - original_image_height) / 2
+                merged_image = merged_image.crop((0, margin, 1024, 1024-margin))
+            else:
+                original_image_width = original_image_width * (1024 / original_image_height)
+                original_image_height = 1024
+                margin = (1024 - original_image_width) / 2
+                merged_image = merged_image.crop((margin, 0, 1024-margin, 1024))
+
             print("Output image saved in path {}".format(output_name))
             merged_image.save(output_name)
