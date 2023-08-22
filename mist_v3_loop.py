@@ -1,3 +1,4 @@
+import math
 import time
 import requests
 import json
@@ -447,12 +448,12 @@ if __name__ == "__main__":
             if original_image_width > original_image_height:
                 original_image_height = original_image_height * (1024 / original_image_width)
                 original_image_width = 1024
-                margin = (1024 - original_image_height) / 2
+                margin = math.ceil((1024 - original_image_height) / 2)
                 merged_image = merged_image.crop((0, margin, 1024, 1024-margin))
             else:
                 original_image_width = original_image_width * (1024 / original_image_height)
                 original_image_height = 1024
-                margin = (1024 - original_image_width) / 2
+                margin = math.ceil((1024 - original_image_width) / 2)
                 merged_image = merged_image.crop((margin, 0, 1024-margin, 1024))
 
             print("Output image saved in path {}".format(output_name))
