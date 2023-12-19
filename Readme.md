@@ -45,6 +45,9 @@
 
 **2022/12/11**: Mist V2 released.  -->
 
+## Original Repository
+[mist-project/mist-v2](https://github.com/mist-project/mist-v2)
+
 ## Main Features
 - Enhanced protection against AI-for-Art applications like Lora and SDEdit
 - Imperceptible noise.
