@@ -1,76 +1,23 @@
-import numpy as np
 import gradio as gr
-from mist_v3 import init, infer
-from mist_utils import load_image_from_path, closing_resize
-import os
-from tqdm import tqdm
-import PIL
-from PIL import Image, ImageOps
+from attacks.mist import update_args_with_config, main
+
+'''
+    TODO: 
+    - SDXL
+    - model changing
+''' 
 
 
-def reverse_mask(mask):
-    r, g, b, a = mask.split()
-    mask = PIL.Image.merge('RGB', (r, g, b))
-    return ImageOps.invert(mask)
+def process_image(eps, device, mode, resize, data_path, output_path, model_path, class_path, prompt, \
+        class_prompt, max_train_steps, max_f_train_steps, max_adv_train_steps, lora_lr, pgd_lr, \
+            rank, prior_loss_weight, fused_weight, constraint_mode, lpips_bound, lpips_weight):
 
-
-config = init()
-target_image_path = os.path.join(os.getcwd(), 'MIST.png')
-
-
-def process_image(image, eps, steps, input_size, rate, mode, block_mode, no_resize):
-    print('Processing....')
-    if mode == 'Textural':
-        mode_value = 1
-    elif mode == 'Semantic':
-        mode_value = 0
-    elif mode == 'Fused':
-        mode_value = 2
-    if image is None:
-        raise ValueError
-
-    processed_mask = reverse_mask(image['mask'])
-
-    image = image['image']
-
-    print('tar_img loading fin')
-    config['parameters']['epsilon'] = eps / 255.0 * (1 - (-1))
-    config['parameters']['steps'] = steps
-
-    config['parameters']["rate"] = 10 ** (rate + 3)
-
-    config['parameters']['mode'] = mode_value
-    block_num = len(block_mode) + 1
-    resize = len(no_resize)
-    bls = input_size // block_num
-    if resize:
-        img, target_size = closing_resize(image, input_size, block_num, True)
-        bls_h = target_size[0]//block_num
-        bls_w = target_size[1]//block_num
-        tar_img = load_image_from_path(target_image_path, target_size[0],
-                                       target_size[1])
-    else:
-        img = load_image_from_path(image, input_size, input_size, True)
-        tar_img = load_image_from_path(target_image_path, input_size)
-        bls_h = bls_w = bls
-        target_size = [input_size, input_size]
-    processed_mask = load_image_from_path(processed_mask, target_size[0], target_size[1], True)
-    config['parameters']['input_size'] = bls
-    print(config['parameters'])
-    output_image = np.zeros([input_size, input_size, 3])
-    for i in tqdm(range(block_num)):
-        for j in tqdm(range(block_num)):
-            if processed_mask is not None:
-                input_mask = Image.fromarray(np.array(processed_mask)[bls_w*i: bls_w*i+bls_w, bls_h*j: bls_h*j + bls_h])
-            else:
-                input_mask = None
-            img_block = Image.fromarray(np.array(img)[bls_w*i: bls_w*i+bls_w, bls_h*j: bls_h*j + bls_h])
-            tar_block = Image.fromarray(np.array(tar_img)[bls_w*i: bls_w*i+bls_w, bls_h*j: bls_h*j + bls_h])
-
-            output_image[bls_w*i: bls_w*i+bls_w, bls_h*j: bls_h*j + bls_h] = infer(img_block, config, tar_block, input_mask)
-    output = Image.fromarray(output_image.astype(np.uint8))
-    return output
-
+    config = (eps, device, mode, resize, data_path, output_path, model_path, class_path, prompt, \
+        class_prompt, max_train_steps, max_f_train_steps, max_adv_train_steps, lora_lr, pgd_lr, \
+            rank, prior_loss_weight, fused_weight, constraint_mode, lpips_bound, lpips_weight)
+    args = None
+    args = update_args_with_config(args, config)
+    main(args)
 
 if __name__ == "__main__":
     with gr.Blocks() as demo:
@@ -78,31 +25,53 @@ if __name__ == "__main__":
             gr.Image("MIST_logo.png", show_label=False)
             with gr.Row():
                 with gr.Column():
-                    image = gr.Image(type='pil', tool='sketch')
-                    eps = gr.Slider(0, 32, step=4, value=16, label='Strength',
-                                    info="Larger strength results in stronger defense at the cost of more visible noise.")
-                    steps = gr.Slider(0, 1000, step=1, value=100, label='Steps',
-                                      info="Larger steps results in stronger defense at the cost of more running time.")
-                    input_size = gr.Slider(256, 768, step=256, value=512, label='Output size',
-                                           info="Size of the output images.")
+                    eps = gr.Slider(0, 32, step=1, value=10, label='Strength',
+                                    info="Larger strength results in stronger but more visible defense.")
+                    device = gr.Radio(["cpu", "gpu"], value="gpu", label="Device",
+                                    info="If you do not have good GPUs on your PC, choose 'CPU'.")
+                    # precision = gr.Radio(["float16", "bfloat16"], value="bfloat16", label="Precision",
+                    #                 info="Precision used in computing")
+                    resize = gr.Checkbox(value=True, label="Resizing the output image to the original resolution")
+                    mode = gr.Radio(["Mode 1", "Mode 2", "Mode 3"], value="Mode 1", label="Mode",
+                                    info="Two modes both work with different visualization.")
+                    # model_type = gr.Radio(["Stable Diffusion", "SDXL"], value="Stable Diffusion", label="Target Model",
+                    #                 info="Model used by imaginary copyright infringers")
+                    data_path = gr.Textbox(label="Data Path", lines=1, placeholder="Path to your images")
+                    output_path = gr.Textbox(label="Output Path", lines=1, placeholder="Path to store the outputs")
+                    model_path = gr.Textbox(label="Target Model Path", lines=1, placeholder="Path to the target model")
+                    class_path = gr.Textbox(label="Path to place contrast images ", lines=1, placeholder="Path to the target model")
+                    prompt = gr.Textbox(label="Prompt", lines=1, placeholder="Describe your images")
 
-                    mode = gr.Radio(["Textural", "Semantic", "Fused"], value="Fused", label="Mode",
-                                    info="See documentation for more information about the mode")
+                    with gr.Accordion("Professional Setups", open=False):
+                        class_prompt = gr.Textbox(label="Class prompt", lines=1, placeholder="Prompt for contrast images.")
+                        max_train_steps = gr.Slider(1, 20, step=1, value=5, label='Epochs',
+                                      info="Training epochs of Mist-V2")
+                        max_f_train_steps = gr.Slider(0, 30, step=1, value=10, label='LoRA Steps',
+                                      info="Training steps of LoRA in one epoch")
+                        max_adv_train_steps = gr.Slider(0, 100, step=5, value=30, label='Attacking Steps',
+                                      info="Training steps of attacking in one epoch")
+                        lora_lr = gr.Number(minimum=0.0, maximum=1.0, label="The learning rate of LoRA", value=0.0001)
+                        pgd_lr = gr.Number(minimum=0.0, maximum=1.0, label="The learning rate of PGD", value=0.005)
+                        rank = gr.Slider(4, 32, step=4, value=4, label='LoRA Ranks',
+                                      info="Ranks of LoRA (Bigger ranks need better GPUs)")
+                        prior_loss_weight = gr.Number(minimum=0.0, maximum=1.0, label="The weight of prior loss", value=0.1)
+                        fused_weight = gr.Number(minimum=0.0, maximum=1.0, label="The weight of vae loss", value=0.00001)
+                        constraint_mode = gr.Radio(["Epsilon", "LPIPS"], value="Epsilon", label="Constraint Mode",
+                                    info="The mode to constraint the watermark")
+                        lpips_bound = gr.Number(minimum=0.0, maximum=0.2, label="The LPIPS bound", value=0.1)
+                        lpips_weight = gr.Number(minimum=0.0, maximum=1.0, label="The weight of LPIPI constraint", value=0.5)
 
-                    with gr.Accordion("Parameters of fused mode", open=False):
-                        rate = gr.Slider(0, 5, step=1, value=1, label='Fusion weight',
-                                         info="Higher fusion weight leads to more emphasis on \"Semantic\" ")
+                    # inputs = [eps, device, precision, mode, model_type, original_resolution, data_path, \
+                    #           output_path, model_path, prompt, max_f_train_steps, max_train_steps, max_adv_train_steps, lora_lr, pgd_lr, rank]
+                    
+                    inputs = [eps, device, mode, resize, data_path, output_path, model_path, class_path, prompt, \
+        class_prompt, max_train_steps, max_f_train_steps, max_adv_train_steps, lora_lr, pgd_lr, \
+            rank, prior_loss_weight, fused_weight, constraint_mode, lpips_bound, lpips_weight]
+                    
 
-                    block_mode = gr.CheckboxGroup(["Low VRAM usage mode"],
-                                                  info="Use this mode if the VRAM of your device is not enough. Check the documentation for more information.",
-                                                  label='VRAM mode')
-                    with gr.Accordion("Experimental option for non-square input", open=False):
-                        no_resize = gr.CheckboxGroup(["No-resize mode"],
-                                                  info="Use this mode if you donot want your image to be resized in square shape. This option is still experimental and may reduce the strength of MIST.",
-                                                  label='No-resize mode')
-                    inputs = [image, eps, steps, input_size, rate, mode, block_mode, no_resize]
                     image_button = gr.Button("Mist")
-                outputs = gr.Image(label='Misted image')
-            image_button.click(process_image, inputs=inputs, outputs=outputs)
 
-    demo.queue().launch(share=True)
+                    
+            image_button.click(process_image, inputs=inputs)
+
+    demo.queue().launch(share=False)
